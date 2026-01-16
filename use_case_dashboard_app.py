@@ -23,7 +23,7 @@ from dataclasses import dataclass
 # Page configuration
 st.set_page_config(
     page_title="AI Investment Justification Dashboard",
-    page_icon="📊",
+    page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -63,30 +63,46 @@ st.markdown("""
 class UseCaseTemplate:
     name: str
     description: str
-    base_volume: int
-    base_value: float
-    process_cost: float
-    revenue_factor: float
-    savings_factor: float
-    default_revenue_lift: float
-    default_cost_savings: float
-    default_investment: float
-    default_maintenance_pct: float
-    impact_categories: List[str]
-    category_colors: List[str]
+    # Order Management specific fields
+    default_dso: float = 0
+    default_perfect_order_rate: float = 0
+    default_cycle_time: float = 0
+    default_revenue_leakage: float = 0
+    default_cost_per_order: float = 0
+    default_straight_through_pct: float = 0
+    # Generic fields for other use cases
+    base_volume: int = 0
+    base_value: float = 0
+    process_cost: float = 0
+    revenue_factor: float = 0.5
+    savings_factor: float = 0.5
+    default_revenue_lift: float = 0.5
+    default_cost_savings: float = 0.5
+    default_investment: float = 500000
+    default_maintenance_pct: float = 0.20
+    impact_categories: List[str] = None
+    category_colors: List[str] = None
 
 # Define use case templates
 USE_CASE_TEMPLATES = {
     'order-management': UseCaseTemplate(
         name='Order Management & Validation',
         description='Improve order capture, validation, and exception handling for complex product configurations',
+        # Order Management specific defaults
+        default_dso=45.0,
+        default_perfect_order_rate=0.75,
+        default_cycle_time=5.2,
+        default_revenue_leakage=0.08,
+        default_cost_per_order=85.0,
+        default_straight_through_pct=0.65,
+        # Generic defaults for calculations
         base_volume=50000,
         base_value=2500,
         process_cost=85,
         revenue_factor=0.65,
         savings_factor=0.35,
-        default_revenue_lift=0.18,
-        default_cost_savings=0.25,
+        default_revenue_lift=0.50,
+        default_cost_savings=0.50,
         default_investment=500000,
         default_maintenance_pct=0.20,
         impact_categories=['Process Automation', 'Error Reduction', 'Cycle Time Improvement'],
@@ -100,8 +116,8 @@ USE_CASE_TEMPLATES = {
         process_cost=45,
         revenue_factor=0.45,
         savings_factor=0.55,
-        default_revenue_lift=0.22,
-        default_cost_savings=0.30,
+        default_revenue_lift=0.50,
+        default_cost_savings=0.50,
         default_investment=450000,
         default_maintenance_pct=0.18,
         impact_categories=['Straight-Through Processing', 'Early Payment Capture', 'Compliance'],
@@ -115,8 +131,8 @@ USE_CASE_TEMPLATES = {
         process_cost=120,
         revenue_factor=0.50,
         savings_factor=0.50,
-        default_revenue_lift=0.28,
-        default_cost_savings=0.35,
+        default_revenue_lift=0.50,
+        default_cost_savings=0.50,
         default_investment=650000,
         default_maintenance_pct=0.22,
         impact_categories=['Automation Rate', 'Fraud Prevention', 'Cycle Time'],
@@ -130,8 +146,8 @@ USE_CASE_TEMPLATES = {
         process_cost=12,
         revenue_factor=0.40,
         savings_factor=0.60,
-        default_revenue_lift=0.15,
-        default_cost_savings=0.45,
+        default_revenue_lift=0.50,
+        default_cost_savings=0.50,
         default_investment=380000,
         default_maintenance_pct=0.25,
         impact_categories=['Deflection & Automation', 'Customer Retention', 'Agent Productivity'],
@@ -147,17 +163,34 @@ def calculate_financials(
     cost_savings_pct: float,
     discount_rate: float,
     time_horizon: int,
-    base_volume: int,
-    base_value: float,
-    process_cost: float
+    risk_adjustment: float,
+    # Order Management specific
+    dso: float = None,
+    perfect_order_rate: float = None,
+    cycle_time: float = None,
+    revenue_leakage: float = None,
+    cost_per_order: float = None,
+    straight_through_pct: float = None,
+    # Generic
+    base_volume: int = None,
+    base_value: float = None,
+    process_cost: float = None
 ) -> Tuple[pd.DataFrame, Dict]:
     """Calculate financial projections and metrics"""
     
     annual_maintenance = initial_investment * annual_maintenance_pct
     
-    # Calculate annual benefits
-    revenue_lift_amount = base_volume * base_value * template.revenue_factor * revenue_lift_pct
-    cost_savings_amount = base_volume * process_cost * template.savings_factor * cost_savings_pct
+    # Use provided values or fall back to template defaults
+    if base_volume is None:
+        base_volume = template.base_volume
+    if base_value is None:
+        base_value = template.base_value
+    if process_cost is None:
+        process_cost = template.process_cost
+    
+    # Calculate annual benefits (adjusted by risk)
+    revenue_lift_amount = base_volume * base_value * template.revenue_factor * revenue_lift_pct * (1 - risk_adjustment)
+    cost_savings_amount = base_volume * process_cost * template.savings_factor * cost_savings_pct * (1 - risk_adjustment)
     
     # Build year-by-year projections
     years = []
@@ -313,7 +346,7 @@ def create_impact_chart(df: pd.DataFrame, template: UseCaseTemplate) -> go.Figur
 
 def main():
     # Header
-    st.title("📊 AI Investment Justification Dashboard")
+    st.title("AI Investment Justification Dashboard")
     st.markdown("**Strategic Framework for Evaluating Agentic AI Initiatives**")
     
     # Use Case Selection
@@ -353,7 +386,7 @@ def main():
     """, unsafe_allow_html=True)
     
     # Sidebar - Input Parameters
-    st.sidebar.header("📈 Investment Parameters")
+    st.sidebar.header("Investment Parameters")
     
     st.sidebar.subheader("Investment Costs")
     initial_investment = st.sidebar.number_input(
@@ -366,45 +399,130 @@ def main():
     
     annual_maintenance_pct = st.sidebar.slider(
         "Annual Maintenance (% of initial)",
-        min_value=0.1,
-        max_value=0.5,
-        value=template.default_maintenance_pct,
+        min_value=0.0,
+        max_value=1.0,
+        value=0.50,
         step=0.01,
         format="%.0f%%",
         help="Ongoing costs as percentage of initial investment"
     )
     
+    # Risk Adjustment Slider
+    st.sidebar.subheader("Risk Adjustment")
+    risk_adjustment = st.sidebar.slider(
+        "Risk Factor (%)",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.0,
+        step=0.01,
+        format="%.0f%%",
+        help="Adjust expected benefits downward to account for implementation risk"
+    )
+    
+    # Business Assumptions - Order Management specific or generic
     st.sidebar.subheader("Business Assumptions")
-    base_volume = st.sidebar.number_input(
-        "Annual Transaction Volume",
-        min_value=1000,
-        value=template.base_volume,
-        step=1000,
-        help="Number of transactions processed annually"
-    )
     
-    base_value = st.sidebar.number_input(
-        "Average Transaction Value ($)",
-        min_value=10.0,
-        value=float(template.base_value),
-        step=10.0,
-        help="Average revenue or value per transaction"
-    )
-    
-    process_cost = st.sidebar.number_input(
-        "Process Cost per Transaction ($)",
-        min_value=1.0,
-        value=float(template.process_cost),
-        step=1.0,
-        help="Current cost to process each transaction"
-    )
+    if st.session_state.selected_use_case == 'order-management':
+        # Order Management specific fields
+        dso = st.sidebar.number_input(
+            "Days Sales Outstanding (DSO)",
+            min_value=0.0,
+            value=template.default_dso,
+            step=1.0,
+            help="Average days to collect payment after sale"
+        )
+        
+        perfect_order_rate = st.sidebar.slider(
+            "Perfect Order Rate (%)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.50,
+            step=0.01,
+            format="%.0f%%",
+            help="Percentage of orders fulfilled correctly first time"
+        )
+        
+        cycle_time = st.sidebar.number_input(
+            "Order-to-Cash Cycle Time (days)",
+            min_value=0.0,
+            value=template.default_cycle_time,
+            step=0.1,
+            help="Average days from order to cash collection"
+        )
+        
+        revenue_leakage = st.sidebar.slider(
+            "Revenue Leakage (%)",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.50,
+            step=0.01,
+            format="%.0f%%",
+            help="Revenue lost due to errors, discounts, and write-offs"
+        )
+        
+        cost_per_order = st.sidebar.number_input(
+            "Cost per Order ($)",
+            min_value=0.0,
+            value=template.default_cost_per_order,
+            step=1.0,
+            help="Fully-loaded cost to process one order"
+        )
+        
+        straight_through_pct = st.sidebar.slider(
+            "% Straight-Through Processing",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.50,
+            step=0.01,
+            format="%.0f%%",
+            help="Percentage of orders processed without manual intervention"
+        )
+        
+        # For calculation purposes, use template defaults
+        base_volume = template.base_volume
+        base_value = template.base_value
+        process_cost = cost_per_order
+        
+    else:
+        # Generic fields for other use cases
+        base_volume = st.sidebar.number_input(
+            "Annual Transaction Volume",
+            min_value=1000,
+            value=template.base_volume,
+            step=1000,
+            help="Number of transactions processed annually"
+        )
+        
+        base_value = st.sidebar.number_input(
+            "Average Transaction Value ($)",
+            min_value=10.0,
+            value=float(template.base_value),
+            step=10.0,
+            help="Average revenue or value per transaction"
+        )
+        
+        process_cost = st.sidebar.number_input(
+            "Process Cost per Transaction ($)",
+            min_value=1.0,
+            value=float(template.process_cost),
+            step=1.0,
+            help="Current cost to process each transaction"
+        )
+        
+        # Set Order Management specific vars to None for other use cases
+        dso = None
+        perfect_order_rate = None
+        cycle_time = None
+        revenue_leakage = None
+        cost_per_order = None
+        straight_through_pct = None
     
     st.sidebar.subheader("Expected Improvements")
     revenue_lift_pct = st.sidebar.slider(
         "Revenue Lift (%)",
         min_value=0.0,
-        max_value=0.5,
-        value=template.default_revenue_lift,
+        max_value=1.0,
+        value=0.50,
         step=0.01,
         format="%.0f%%",
         help="Expected increase in revenue from faster cycle times and reduced errors"
@@ -413,8 +531,8 @@ def main():
     cost_savings_pct = st.sidebar.slider(
         "Cost Savings (%)",
         min_value=0.0,
-        max_value=0.5,
-        value=template.default_cost_savings,
+        max_value=1.0,
+        value=0.50,
         step=0.01,
         format="%.0f%%",
         help="Expected reduction in operational costs"
@@ -423,9 +541,9 @@ def main():
     st.sidebar.subheader("Financial Assumptions")
     discount_rate = st.sidebar.slider(
         "Discount Rate (%)",
-        min_value=0.05,
-        max_value=0.20,
-        value=0.08,
+        min_value=0.0,
+        max_value=1.0,
+        value=0.50,
         step=0.01,
         format="%.0f%%",
         help="Cost of capital for NPV calculation"
@@ -447,14 +565,21 @@ def main():
         cost_savings_pct,
         discount_rate,
         time_horizon,
-        base_volume,
-        base_value,
-        process_cost
+        risk_adjustment,
+        dso=dso,
+        perfect_order_rate=perfect_order_rate,
+        cycle_time=cycle_time,
+        revenue_leakage=revenue_leakage,
+        cost_per_order=cost_per_order,
+        straight_through_pct=straight_through_pct,
+        base_volume=base_volume,
+        base_value=base_value,
+        process_cost=process_cost
     )
     
-    # Key Metrics Display
+    # Key Metrics Display (NO ICONS)
     st.markdown("---")
-    st.subheader("💰 Key Financial Metrics")
+    st.subheader("Key Financial Metrics")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -501,7 +626,7 @@ def main():
     
     # Financial Summary Table
     st.markdown("---")
-    st.subheader("📋 Financial Summary Table")
+    st.subheader("Financial Summary Table")
     
     # Format DataFrame for display
     display_df = df.copy()
@@ -531,7 +656,7 @@ def main():
     with col2:
         csv = df.to_csv(index=False)
         st.download_button(
-            label="📥 Download Data (CSV)",
+            label="Download Data (CSV)",
             data=csv,
             file_name=f"{template.name.replace(' ', '_')}_analysis.csv",
             mime="text/csv"
